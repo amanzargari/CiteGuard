@@ -1,0 +1,29 @@
+strictness: balanced          # lenient | balanced | strict
+retrieval_backend: bm25       # bm25 | local_embeddings | api_embeddings
+
+models:
+  cheap: "openai/gpt-4o-mini"
+  medium: "openai/gpt-4o"
+  strong: "anthropic/claude-sonnet-4-5"
+
+retrieval:
+  top_k: 5
+  top_k_requery: 8
+  max_requery_rounds: 3
+  chunk_size: 500
+  chunk_overlap: 50
+
+token_budget:
+  per_citation: 4000
+
+rate_limits:
+  requests_per_minute: 60
+  tokens_per_minute: 100000
+
+output:
+  dir: "output/"
+  checkpoints_dir: "output/checkpoints/"
+  index_cache_dir: "output/index_cache/"
+
+local_embeddings:
+  model: "all-MiniLM-L6-v2"

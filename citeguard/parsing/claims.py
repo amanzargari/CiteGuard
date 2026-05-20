@@ -2,10 +2,10 @@ from __future__ import annotations
 import re
 from citeguard.models import CitationRecord, ClaimRecord
 
-_SENT_END = re.compile(r'(?<=[.!?])\s+')
+_SENT_SPLIT = re.compile(r'(?<=[.!?])\s+')
 
 _BIB_HEADERS = re.compile(
-    r'\n(?:References|Bibliography|Works Cited|Literature Cited)\s*\n',
+    r'(?:^|\n)(?:References|Bibliography|Works Cited|Literature Cited)\s*\n',
     re.IGNORECASE,
 )
 _NUMERIC_ENTRY = re.compile(r'^\[(\d+)\]\s+(.+)$', re.MULTILINE)
@@ -18,9 +18,19 @@ _AUTHORYEAR_ENTRY = re.compile(
 )
 
 
-def _split_sentences(text: str) -> list[str]:
-    parts = _SENT_END.split(text.strip())
-    return [p.strip() for p in parts if p.strip()]
+def _split_sentences_with_spans(text: str) -> list[tuple[str, int, int]]:
+    """Return list of (sentence_text, start, end) tuples."""
+    results = []
+    pos = 0
+    for match in _SENT_SPLIT.finditer(text):
+        sent = text[pos:match.start()].strip()
+        if sent:
+            results.append((sent, pos, match.start()))
+        pos = match.end()
+    tail = text[pos:].strip()
+    if tail:
+        results.append((tail, pos, len(text)))
+    return results
 
 
 class ClaimSegmenter:
@@ -28,23 +38,24 @@ class ClaimSegmenter:
         self._window = window
 
     def segment(self, text: str, citation: CitationRecord) -> ClaimRecord:
-        sentences = _split_sentences(text)
-        pos = citation.position
-        target_idx = 0
+        spans = _split_sentences_with_spans(text)
+        if not spans:
+            return ClaimRecord(citation_id=citation.id, claim_text="")
 
-        cumulative = 0
-        for i, sent in enumerate(sentences):
-            if cumulative + len(sent) >= pos:
+        pos = citation.position
+        target_idx = len(spans) - 1  # default to last sentence
+
+        for i, (sent, start, end) in enumerate(spans):
+            if start <= pos <= end:
                 target_idx = i
                 break
-            cumulative += len(sent) + 1
 
         before_start = max(0, target_idx - self._window)
-        after_end = min(len(sentences), target_idx + self._window + 1)
+        after_end = min(len(spans), target_idx + self._window + 1)
 
-        claim_text = sentences[target_idx] if target_idx < len(sentences) else ""
-        context_before = " ".join(sentences[before_start:target_idx])
-        context_after = " ".join(sentences[target_idx + 1:after_end])
+        claim_text = spans[target_idx][0]
+        context_before = " ".join(s for s, _, _ in spans[before_start:target_idx])
+        context_after = " ".join(s for s, _, _ in spans[target_idx + 1:after_end])
 
         return ClaimRecord(
             citation_id=citation.id,
@@ -55,7 +66,7 @@ class ClaimSegmenter:
 
 
 class BibliographyParser:
-    """Extract the reference list and build a marker -> entry text dict."""
+    """Extract the reference list and build a marker → entry text dict."""
 
     def parse(self, text: str) -> dict[str, str]:
         match = _BIB_HEADERS.search(text)

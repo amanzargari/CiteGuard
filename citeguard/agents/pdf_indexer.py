@@ -2,6 +2,7 @@ from __future__ import annotations
 from pathlib import Path
 from difflib import SequenceMatcher
 
+from rich.console import Console
 from rich.progress import (
     Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn,
 )
@@ -13,6 +14,12 @@ from citeguard.pdf.chunker import TextChunker
 from citeguard.retrieval.base import RetrieverBase
 from citeguard.retrieval.factory import build_retriever
 from citeguard.cache.manager import CacheManager
+
+_MATCH_THRESHOLD = 0.35
+_FIRST_PAGE_CHARS = 500
+_COMPARISON_CHARS = 200
+
+_console = Console()
 
 
 def _similarity(a: str, b: str) -> float:
@@ -33,6 +40,7 @@ class PDFIndexer:
             overlap=settings.retrieval.chunk_overlap,
         )
         self._retrievers: dict[str, RetrieverBase] = {}
+        self._pdf_meta_cache: dict[str, dict] = {}
 
     def index_all(
         self,
@@ -68,7 +76,8 @@ class PDFIndexer:
         try:
             pages = self._extractor.extract(pdf_path)
         except RuntimeError:
-            return  # skip unreadable PDFs silently
+            _console.print(f"[yellow]Warning: could not index {pdf_path.name}[/yellow]")
+            return  # skip unreadable PDFs
 
         chunks = self._chunker.chunk(pages, str(pdf_path))
         retriever = build_retriever(self._settings)
@@ -82,6 +91,36 @@ class PDFIndexer:
     def get_retriever(self, pdf_path: str) -> RetrieverBase | None:
         """Get the retriever for a specific PDF, or None if not indexed."""
         return self._retrievers.get(pdf_path)
+
+    def _get_pdf_meta(self, pdf_path: Path) -> dict:
+        """Return cached per-PDF metadata dict (stem, title, author, first_page_snippet)."""
+        key = str(pdf_path)
+        if key in self._pdf_meta_cache:
+            return self._pdf_meta_cache[key]
+
+        meta: dict = {
+            "stem": pdf_path.stem,
+            "title": "",
+            "author": "",
+            "first_page_snippet": "",
+        }
+
+        try:
+            import fitz
+            doc = fitz.open(str(pdf_path))
+            try:
+                meta["title"] = doc.metadata.get("title", "")
+                meta["author"] = doc.metadata.get("author", "")
+                meta["first_page_snippet"] = (
+                    doc[0].get_text("text")[:_FIRST_PAGE_CHARS] if len(doc) > 0 else ""
+                )
+            finally:
+                doc.close()
+        except Exception:
+            pass
+
+        self._pdf_meta_cache[key] = meta
+        return meta
 
     def match_citations_to_pdfs(
         self,
@@ -102,7 +141,7 @@ class PDFIndexer:
                     best_score = score
                     best_pdf = str(pdf_path)
 
-            matched = best_pdf if best_score >= 0.35 else None
+            matched = best_pdf if best_score >= _MATCH_THRESHOLD else None
             updated.append(citation.model_copy(update={
                 "matched_pdf": matched,
                 "reference_text": ref_text,
@@ -112,26 +151,20 @@ class PDFIndexer:
     def _match_score(self, ref_text: str, pdf_path: Path) -> float:
         """Compute best match score between reference text and PDF using multiple strategies."""
         scores: list[float] = []
+        meta = self._get_pdf_meta(pdf_path)
 
         # Strategy 1: Filename similarity
-        scores.append(_similarity(ref_text, pdf_path.stem))
+        scores.append(_similarity(ref_text, meta["stem"]))
 
         # Strategy 2: PDF metadata (title, author, first-page text)
-        try:
-            import fitz
-            doc = fitz.open(str(pdf_path))
-            meta_title = doc.metadata.get("title", "")
-            meta_author = doc.metadata.get("author", "")
-            first_page = doc[0].get_text("text")[:500] if len(doc) > 0 else ""
-            doc.close()
-
-            if meta_title:
-                scores.append(_similarity(ref_text, meta_title))
-            if meta_author:
-                scores.append(_similarity(ref_text, meta_author))
-            if first_page:
-                scores.append(_similarity(ref_text[:200], first_page[:200]))
-        except Exception:
-            pass
+        if meta["title"]:
+            scores.append(_similarity(ref_text, meta["title"]))
+        if meta["author"]:
+            scores.append(_similarity(ref_text, meta["author"]))
+        if meta["first_page_snippet"]:
+            scores.append(_similarity(
+                ref_text[:_COMPARISON_CHARS],
+                meta["first_page_snippet"][:_COMPARISON_CHARS],
+            ))
 
         return max(scores) if scores else 0.0

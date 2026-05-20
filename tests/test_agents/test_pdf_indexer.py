@@ -80,3 +80,44 @@ def test_match_citations_assigns_reference_text(tmp_path, sample_pdf):
     citations = [make_citation("[1]")]
     updated = indexer.match_citations_to_pdfs(citations, ref_entries, [sample_pdf])
     assert updated[0].reference_text == "Smith et al. Citation verification. 2023."
+
+
+def test_corrupt_cache_fallback(tmp_path, sample_pdf):
+    """Corrupt cache file causes fallback to re-indexing; retriever is still registered."""
+    cache = CacheManager(
+        checkpoints_dir=tmp_path / "ckpts",
+        index_cache_dir=tmp_path / "idx",
+    )
+    indexer = PDFIndexer(Settings())
+    # Write junk to the cache location so the load path is taken but fails
+    cache_path = cache.index_cache_path(str(sample_pdf))
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    cache_path.write_bytes(b"corrupt data")
+
+    indexer.index_all([sample_pdf], cache, show_progress=False)
+    # Retriever should still be registered after falling through to re-index
+    assert indexer.get_retriever(str(sample_pdf)) is not None
+
+
+def test_extraction_failure_skip(tmp_path):
+    """_index_one with a non-existent path skips silently; no retriever registered."""
+    cache = CacheManager(
+        checkpoints_dir=tmp_path / "ckpts",
+        index_cache_dir=tmp_path / "idx",
+    )
+    missing = tmp_path / "does_not_exist.pdf"
+    indexer = PDFIndexer(Settings())
+    # Should not raise even though the file doesn't exist
+    indexer._index_one(missing, cache)
+    assert indexer.get_retriever(str(missing)) is None
+
+
+def test_positive_match_citation_to_pdf(sample_pdf):
+    """Citation whose ref text closely mirrors the PDF content matches sample_pdf."""
+    indexer = make_indexer()
+    # Use text that closely mirrors the first-page content of sample_pdf so the
+    # first-page similarity strategy scores above _MATCH_THRESHOLD (0.35).
+    ref_entries = {"[1]": "novel approach to citation verification accuracy benchmark dataset"}
+    citations = [make_citation("[1]")]
+    updated = indexer.match_citations_to_pdfs(citations, ref_entries, [sample_pdf])
+    assert updated[0].matched_pdf is not None

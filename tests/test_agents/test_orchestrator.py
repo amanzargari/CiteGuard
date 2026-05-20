@@ -156,3 +156,66 @@ def test_run_verifier_exception_saves_error_checkpoint(runner, manuscript_pdf):
     saved = runner._cache.save_checkpoint.call_args.args[0]
     assert saved.citation_id == "ref_0001"
     assert saved.verdict == Verdict.ERROR
+
+
+def test_on_progress_receives_found_event(runner, manuscript_pdf):
+    citations = [make_citation("ref_0001", "[1]"), make_citation("ref_0002", "[2]")]
+    runner._citation_extractor.extract.return_value = citations
+    runner._indexer.match_citations_to_pdfs.return_value = citations
+    runner._cache.completed_citation_ids.return_value = set()
+    runner._cache.all_results.return_value = []
+    runner._verifier.verify.return_value = SimpleNamespace(verdict=Verdict.SUPPORTED, confidence=0.9)
+    runner._indexer.get_retriever.return_value = object()
+
+    events = []
+    runner.run(manuscript_pdf.manuscript, manuscript_pdf.pdf_dir, on_progress=events.append)
+
+    types = [e["type"] for e in events]
+    assert "found" in types
+    found = next(e for e in events if e["type"] == "found")
+    assert found["citations"] == 2
+
+
+def test_on_progress_receives_verdict_events(runner, manuscript_pdf):
+    citations = [make_citation("ref_0001", "[1]"), make_citation("ref_0002", "[2]")]
+    runner._citation_extractor.extract.return_value = citations
+    runner._indexer.match_citations_to_pdfs.return_value = citations
+    runner._cache.completed_citation_ids.return_value = set()
+    runner._cache.all_results.return_value = []
+    runner._verifier.verify.return_value = SimpleNamespace(verdict=Verdict.SUPPORTED, confidence=0.9)
+    runner._indexer.get_retriever.return_value = object()
+
+    events = []
+    runner.run(manuscript_pdf.manuscript, manuscript_pdf.pdf_dir, on_progress=events.append)
+
+    verdict_events = [e for e in events if e["type"] == "verdict"]
+    assert len(verdict_events) == 2
+    assert verdict_events[0]["verdict"] == "SUPPORTED"
+
+
+def test_on_progress_none_does_not_raise(runner, manuscript_pdf):
+    citations = [make_citation("ref_0001", "[1]")]
+    runner._citation_extractor.extract.return_value = citations
+    runner._indexer.match_citations_to_pdfs.return_value = citations
+    runner._cache.completed_citation_ids.return_value = set()
+    runner._cache.all_results.return_value = []
+    runner._verifier.verify.return_value = SimpleNamespace(verdict=Verdict.SUPPORTED, confidence=0.9)
+    runner._indexer.get_retriever.return_value = object()
+
+    # Should not raise even with no callback
+    runner.run(manuscript_pdf.manuscript, manuscript_pdf.pdf_dir, on_progress=None)
+
+
+def test_on_progress_receives_done_event(runner, manuscript_pdf):
+    citations = [make_citation("ref_0001", "[1]")]
+    runner._citation_extractor.extract.return_value = citations
+    runner._indexer.match_citations_to_pdfs.return_value = citations
+    runner._cache.completed_citation_ids.return_value = set()
+    runner._cache.all_results.return_value = []
+    runner._verifier.verify.return_value = SimpleNamespace(verdict=Verdict.SUPPORTED, confidence=0.9)
+    runner._indexer.get_retriever.return_value = object()
+
+    events = []
+    runner.run(manuscript_pdf.manuscript, manuscript_pdf.pdf_dir, on_progress=events.append)
+
+    assert any(e["type"] == "done" for e in events)

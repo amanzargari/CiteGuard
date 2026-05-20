@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CiteGuard</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: #f0f2f5; color: #1a1a2e; min-height: 100vh; }
+
+    header { background: #1a1a2e; color: #fff; padding: 1.25rem 2rem; display: flex; align-items: baseline; gap: 1rem; }
+    header h1 { font-size: 1.6rem; font-weight: 700; letter-spacing: -0.5px; }
+    header p { opacity: 0.55; font-size: 0.85rem; }
+
+    main { max-width: 780px; margin: 2rem auto; padding: 0 1rem; }
+
+    .card { background: #fff; border-radius: 10px; padding: 1.5rem; box-shadow: 0 1px 6px rgba(0,0,0,0.08); margin-bottom: 1.25rem; }
+
+    h2 { font-size: 1.1rem; font-weight: 700; margin-bottom: 1rem; }
+
+    label { display: block; font-size: 0.8rem; font-weight: 600; color: #6c757d; margin-bottom: 0.3rem; margin-top: 1rem; text-transform: uppercase; letter-spacing: 0.04em; }
+    label:first-of-type { margin-top: 0; }
+    input[type=text], select {
+      width: 100%; padding: 0.55rem 0.8rem; border: 1.5px solid #dee2e6;
+      border-radius: 7px; font-size: 0.95rem; background: #fff;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    input[type=text]:focus, select:focus {
+      outline: none; border-color: #4361ee;
+      box-shadow: 0 0 0 3px rgba(67,97,238,0.15);
+    }
+    input[type=text]:disabled, select:disabled { background: #f8f9fa; color: #adb5bd; cursor: not-allowed; }
+
+    .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.75rem; margin-top: 1rem; }
+
+    .btn {
+      display: inline-flex; align-items: center; gap: 0.4rem;
+      padding: 0.6rem 1.4rem; border: none; border-radius: 7px;
+      font-size: 0.9rem; font-weight: 600; cursor: pointer;
+      text-decoration: none; transition: filter 0.15s;
+    }
+    .btn:hover:not(:disabled) { filter: brightness(0.92); }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn-primary  { background: #4361ee; color: #fff; }
+    .btn-secondary { background: #6c757d; color: #fff; }
+    .btn-outline  { background: transparent; border: 1.5px solid #4361ee; color: #4361ee; }
+    .btn-row { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 1.25rem; }
+
+    .step-label { font-size: 0.95rem; font-weight: 600; color: #4361ee; margin-bottom: 0.75rem; }
+    .progress-wrap { background: #e9ecef; border-radius: 99px; height: 8px; overflow: hidden; margin-bottom: 0.35rem; }
+    .progress-fill { height: 100%; background: linear-gradient(90deg,#4361ee,#7b9eff); border-radius: 99px; width: 0%; transition: width 0.4s ease; }
+    .progress-text { font-size: 0.8rem; color: #adb5bd; margin-bottom: 1rem; }
+
+    #verdict-log { max-height: 340px; overflow-y: auto; border: 1.5px solid #f0f2f5; border-radius: 8px; background: #fafbfc; }
+    .vrow { display: flex; align-items: center; gap: 0.65rem; padding: 0.42rem 0.75rem; border-bottom: 1px solid #f0f2f5; font-size: 0.85rem; }
+    .vrow:last-child { border-bottom: none; }
+
+    .badge {
+      display: inline-block; padding: 0.18rem 0.55rem; border-radius: 5px;
+      font-size: 0.72rem; font-weight: 700; color: #fff;
+      min-width: 106px; text-align: center; letter-spacing: 0.03em;
+    }
+    .vmarker { font-family: monospace; color: #495057; font-size: 0.82rem; flex: 1; }
+    .vconf { font-size: 0.78rem; color: #adb5bd; white-space: nowrap; }
+
+    .summary-wrap { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.75rem 0 1.25rem; }
+    .sbadge { padding: 0.35rem 0.85rem; border-radius: 6px; font-size: 0.82rem; font-weight: 700; color: #fff; }
+
+    #error-banner {
+      background: #fff5f5; border: 1.5px solid #fc8181; border-radius: 8px;
+      padding: 0.85rem 1rem; color: #c53030; margin-bottom: 1rem;
+      font-size: 0.9rem; display: none;
+    }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>CiteGuard</h1>
+  <p>Academic citation verification</p>
+</header>
+
+<main>
+  <div id="error-banner"></div>
+
+  <!-- State 1: Config form -->
+  <section id="form-section">
+    <div class="card">
+      <h2>Configuration</h2>
+      <form id="run-form">
+        <label>Manuscript path</label>
+        <input type="text" id="manuscript_path" name="manuscript_path"
+               placeholder="/path/to/paper.pdf or paper.docx" required>
+
+        <label>PDF folder</label>
+        <input type="text" id="pdf_folder" name="pdf_folder"
+               placeholder="/path/to/pdfs/" required>
+
+        <div class="row3">
+          <div>
+            <label>Strictness</label>
+            <select id="strictness" name="strictness">
+              <option value="lenient">Lenient</option>
+              <option value="balanced" selected>Balanced</option>
+              <option value="strict">Strict</option>
+            </select>
+          </div>
+          <div>
+            <label>Retrieval backend</label>
+            <select id="retrieval_backend" name="retrieval_backend">
+              <option value="bm25" selected>BM25</option>
+              <option value="local_embeddings">Local Embeddings</option>
+              <option value="api_embeddings">API Embeddings</option>
+            </select>
+          </div>
+          <div>
+            <label>Model (OpenRouter)</label>
+            <input type="text" id="model" name="model"
+                   value="anthropic/claude-sonnet-4-5">
+          </div>
+        </div>
+
+        <div class="btn-row">
+          <button type="submit" class="btn btn-primary" id="run-btn">&#9654; Run Verification</button>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <!-- State 2: Progress -->
+  <section id="progress-section" hidden>
+    <div class="card">
+      <div class="step-label" id="step-label">Starting...</div>
+      <div class="progress-wrap"><div class="progress-fill" id="progress-fill"></div></div>
+      <div class="progress-text" id="progress-text"></div>
+      <div id="verdict-log"></div>
+    </div>
+  </section>
+
+  <!-- State 3: Done -->
+  <section id="done-section" hidden>
+    <div class="card">
+      <h2 style="color:#2dc653">&#10003; Verification Complete</h2>
+      <div class="summary-wrap" id="summary-wrap"></div>
+      <div class="btn-row">
+        <a href="/report/pdf" download class="btn btn-primary">&#8659; Download PDF Report</a>
+        <a href="/report/json" download class="btn btn-secondary">&#8659; Download JSON</a>
+        <button class="btn btn-outline" id="run-another-btn">&#8617; Run Another</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+  const COLORS = {
+    SUPPORTED:    '#2dc653',
+    PARTIAL:      '#f4a261',
+    UNSUPPORTED:  '#e63946',
+    EXAGGERATED:  '#e07c24',
+    FABRICATED:   '#9d0208',
+    AMBIGUOUS:    '#adb5bd',
+    UNVERIFIABLE: '#4895ef',
+    ERROR:        '#7b2d8b',
+  };
+
+  const $ = id => document.getElementById(id);
+  let _total = 0, _current = 0, _es = null;
+
+  function showError(msg) {
+    const b = $('error-banner');
+    b.textContent = '⚠ ' + msg;
+    b.style.display = 'block';
+  }
+  function clearError() {
+    $('error-banner').textContent = '';
+    $('error-banner').style.display = 'none';
+  }
+
+  function setProgress(current, total) {
+    _current = current; _total = total;
+    const pct = total > 0 ? (current / total * 100) : 0;
+    $('progress-fill').style.width = pct + '%';
+    $('progress-text').textContent = total > 0 ? current + ' / ' + total : '';
+  }
+
+  function appendVerdict(ev) {
+    const color = COLORS[ev.verdict] || '#adb5bd';
+    const row = document.createElement('div');
+    row.className = 'vrow';
+    const conf = ev.confidence != null ? Math.round(ev.confidence * 100) + '%' : '';
+    row.innerHTML =
+      '<span class="badge" style="background:' + color + '">' + ev.verdict + '</span>' +
+      '<span class="vmarker">' + escHtml(ev.marker) + '</span>' +
+      '<span class="vconf">' + conf + '</span>';
+    const log = $('verdict-log');
+    log.appendChild(row);
+    log.scrollTop = log.scrollHeight;
+  }
+
+  function showDone(ev) {
+    $('progress-section').hidden = true;
+    $('done-section').hidden = false;
+    const wrap = $('summary-wrap');
+    wrap.innerHTML = '';
+    Object.entries(ev.verdicts || {}).forEach(function([v, n]) {
+      const el = document.createElement('span');
+      el.className = 'sbadge';
+      el.style.background = COLORS[v] || '#adb5bd';
+      el.textContent = v + '  ' + n;
+      wrap.appendChild(el);
+    });
+  }
+
+  function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function lockForm(locked) {
+    ['manuscript_path','pdf_folder','strictness','retrieval_backend','model'].forEach(function(id) {
+      $(id).disabled = locked;
+    });
+    $('run-btn').disabled = locked;
+  }
+
+  function startStream() {
+    if (_es) { _es.close(); _es = null; }
+    _es = new EventSource('/stream');
+    _es.onmessage = function(e) {
+      const ev = JSON.parse(e.data);
+      if (ev.type === 'ping') return;
+      if (ev.type === 'step') {
+        $('step-label').textContent = ev.message;
+      } else if (ev.type === 'found') {
+        $('step-label').textContent =
+          'Found ' + ev.citations + ' citations — ' +
+          ev.matched + ' matched to PDFs';
+        setProgress(0, ev.citations);
+      } else if (ev.type === 'verifying') {
+        $('step-label').textContent = 'Verifying ' + ev.current + ' / ' + ev.total;
+        setProgress(ev.current - 1, ev.total);
+      } else if (ev.type === 'verdict') {
+        appendVerdict(ev);
+        setProgress(_current + 1, _total);
+      } else if (ev.type === 'done') {
+        _es.close(); _es = null;
+        showDone(ev);
+      } else if (ev.type === 'error') {
+        _es.close(); _es = null;
+        $('progress-section').hidden = true;
+        $('form-section').hidden = false;
+        lockForm(false);
+        showError(ev.message);
+      }
+    };
+    _es.onerror = function() {
+      if (_es && _es.readyState !== EventSource.CLOSED) {
+        showError('Lost connection to server.');
+      }
+    };
+  }
+
+  $('run-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    clearError();
+    const fd = new FormData(e.target);
+    try {
+      const res = await fetch('/run', { method: 'POST', body: fd });
+      if (!res.ok) {
+        const err = await res.json();
+        showError(err.detail || 'Failed to start run');
+        return;
+      }
+      lockForm(true);
+      $('form-section').hidden = true;
+      $('progress-section').hidden = false;
+      $('step-label').textContent = 'Starting...';
+      setProgress(0, 0);
+      startStream();
+    } catch(err) {
+      showError('Could not reach server: ' + err.message);
+    }
+  });
+
+  $('run-another-btn').addEventListener('click', function() {
+    $('done-section').hidden = true;
+    $('form-section').hidden = false;
+    $('verdict-log').innerHTML = '';
+    $('summary-wrap').innerHTML = '';
+    setProgress(0, 0);
+    lockForm(false);
+    clearError();
+  });
+</script>
+</body>
+</html>

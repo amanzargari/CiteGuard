@@ -144,3 +144,21 @@ def status(output_dir: Path):
     for verdict, count in sorted(counts.items(), key=lambda x: -x[1]):
         table.add_row(verdict.value, str(count))
     console.print(table)
+
+
+@cli.command()
+@click.option("--host", default="127.0.0.1", show_default=True, help="Host to bind to")
+@click.option("--port", default=8000, show_default=True, type=int, help="Port to listen on")
+def web(host: str, port: int) -> None:
+    """Start the CiteGuard web UI."""
+    import uvicorn
+    console.print(
+        f"\n[bold green]CiteGuard Web UI[/bold green]  "
+        f"→  [cyan]http://{host}:{port}[/cyan]\n"
+        f"Press [bold]Ctrl+C[/bold] to stop.\n"
+    )
+    uvicorn.run("citeguard.web.app:app", host=host, port=port, reload=False)
+
+
+if __name__ == "__main__":
+    cli()
